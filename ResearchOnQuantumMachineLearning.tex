@@ -1,0 +1,28 @@
+\documentclass{article}
+
+
+%\include{verbatim}
+\input{preamble.tex}
+
+\begin{document}
+\title{Research on Quantum Machine Learning}
+\date\today
+\maketitle
+\author{Huijie Guan}
+\section{Challenges}
+\begin{itemize}
+\item Overcoming back propagation with quantum circuits.
+In classical neural network, errors must be propagated back through the network such that the weights of the network can be adjusted to learn the target pattern. When a quantum circuit is employed, there are still techniques such as \textit{parameter shift rule} or even just doing numerically that can use the existing quantum gates to produce the gradient.
+\item Showing advantage over classical case. So far, the combination of quantum circuit and classical algorithm is more to offer proof of concept with the classical case being more performant. However, the interest is in using more complex quantum circuit, potentially with entanglement that might be able to offer an advantages, especially when learning complex patterns. Researchers have outline how quantum based network may offer training advantages and better dimensional properties with the ability to learn faster and more effectively than classical networks.\cite{Abbas_2021}. Training on classical data sets, the authors have compared a variety of properties such as capacity, dimensional data with the result that quantum networks can effectively store more complex pattern than their classical equivalents
+\item Difficult parameter optimization due to \textit{barren plateau}. Often, quantum neural networks suffer from \textit{barren plateau} phenomenon. This may be noise-induced where certain noise models are assumed on the hardware. On the other hand, noise-free barren plateaus are circuit-induced, which related to random parameter initialization and there are methods to avoid them. (See ref 25-28 in ref \cite{Abbas_2021}). 
+\item Effective data encoding. In any quantum neural networks, information is first encoded into a quantum state via state preparation routine or feature map. The choice of feature map is usually geared toward enhancing the performance of quantum model and is typically neither optimized or trained. It is found in \cite{Abbas_2021} that encoding strategy that are difficult for a classical computer to simulate shows resilience to barren plateaus. Reference 29 in \cite{Abbas_2021} proposed a feature map. As proposed there, Hadamard gates are applied to each qubit. Then normalised feature values of the date are encoded using RZ-gates with rotation angles equal to the feature values of the data. This is then accompanied by RZZ-gates, i.e. controlled rotation, that encode higher order of the data. The RZ and RZZ gates are then repeated. The amount of repetition is termed the depth of the feature map. THis is conjectured to be difficult for depth $\geq 2$.
+\item Choice of classical optimizer.
+\item Error Mitigation as discussed in \url{https://qiskit.org/textbook/ch-quantum-hardware/measurement-error-mitigation.html}
+
+
+\end{itemize}
+
+\bibliographystyle{plain}
+\bibliography{bib_QML.bib}
+
+\end{document}
