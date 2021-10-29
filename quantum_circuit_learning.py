@@ -82,7 +82,7 @@ def circ_ansatz_ising(n_qubits, T):
     return TH
 
     
-def circ_ansatz_unitary(n_qubits):
+def circ_ansatz_unitary(n_qubits, layer):
     """
     Parameters
     ----------
@@ -95,7 +95,7 @@ def circ_ansatz_unitary(n_qubits):
             prod_i R_i^X(theta_1^i) R_i^Z(\theta_2^i) R_i^X(\theta_3^i)
     """
     U_ansatz = QuantumCircuit(n_qubits)
-    theta = ParameterVector('theta', n_qubits*3)
+    theta = ParameterVector(f'theta_{layer}', 3*n_qubits)
     for i in range(n_qubits):
         U_ansatz.rx(theta[3*i], i)
         U_ansatz.rz(theta[3*i+1], i)
@@ -116,11 +116,13 @@ def build_circ(n_qubits, D = 1):
 
     """ 
     # U is an umparametrized CircuitOp instance 
-    U = circ_ansatz_unitary(n_qubits)
-    qc_block = U @ qc_ising
+    U = circ_ansatz_unitary(n_qubits, layer = 0)
+    qc = U @ qc_ising
     #qc_block.to_circuit().draw()
-    qc = qc_block
+    #qc = qc_block
     for i in range(D-1):
+        U = circ_ansatz_unitary(n_qubits, layer = i+1)
+        qc_block = U @ qc_ising
         qc = qc_block @ qc
     return qc
 
