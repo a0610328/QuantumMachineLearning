@@ -5,6 +5,12 @@ Created on Wed Oct 27 13:04:58 2021
 @author: Huijie Guan
 
 Pick More Daisies
+
+FYI, with 40 training data, 100 max iteration steps, the training 
+process took ~ 3 hours, accuracy 0.475. Accuracy 20 Test datas are 0.6
+The randomly generated training data is less separable than that of 
+the test data, which may account for the increase in accuracy. However,
+there exists a definite boundary between the two categories. The
 """
 
 from sklearn import datasets
@@ -16,6 +22,11 @@ from qiskit.opflow import X,Z,I, CircuitOp
 from itertools import permutations
 from qiskit.circuit import ParameterVector
 from qiskit import QuantumCircuit
+from qiskit.algorithms.optimizers import ADAM
+import qiskit.utils.algorithm_globals
+import matplotlib.pyplot as plt
+from time import time
+from random import seed
 
 
 def circ_fm(n_qubits, x):
@@ -90,8 +101,8 @@ def circ_ansatz_unitary(n_qubits, layer):
     
     Returns
     -------
-    U_ansatz : variational ansatz with parameter theta_1, ..., theta_{n_qubits}
-        defined as 
+    U_ansatz : CircuitOp instance, variational ansatz with parameter theta_1, 
+        ..., theta_{n_qubits}, defined as 
             prod_i R_i^X(theta_1^i) R_i^Z(\theta_2^i) R_i^X(\theta_3^i)
     """
     U_ansatz = QuantumCircuit(n_qubits)
@@ -204,38 +215,94 @@ def loss(X_dat, Y_dat, theta):
     pred_list = predictions(X_dat, theta)
     for (z1, z2), y in zip(pred_list, Y_dat):
         zz1, zz2 = softmax((z1, z2))
-        l += -y*np.log(zz1)-(1-y)*np.log(zz2)
-    return l
+        l += -(1-y)*np.log(zz1)-y*np.log(zz2)  #TODO check this
+    return l/len(Y_dat)
     
 
-def gradient(X_dat, Y_dat, theta):
+def gradient(X_dat, Y_dat, theta, loss_track, accu_track, minibatch_size = None):
     """
-    
-
+    Parameters
+    ----------
+    X_dat: 2d ndarray, float, input features, (rows, 2)
+    Y_dat: 1d ndarray, int, true lables, (rows, )
+    theta: 1d ndarray, float, to be optimized parameter in unitary circuits, (3*n_qubits*D)
+    loss_track: list, float, record of loss function 
     Returns
     -------
-    grad: 1d ndarray 
+    grad: 1d ndarray, float, dloss/dtheta_i, (3*n_qubits*D,)
         -y (1-softmax(x_1))\partial x_1/\partial theta_i -(1-y)(1-softmax(x_2))\
             \partial x_2/\partial theta_i
 
     """  
+    if minibatch_size:
+        minibatch_index = np.random.choice(np.arange(len(Y_dat)), minibatch_size)
+        X_minibatch = np.array([X_dat[i] for i in minibatch_index])
+        Y_minibatch = np.array([Y_dat[i] for i in minibatch_index])
+    else:
+        X_minibatch, Y_minibatch = X_dat, Y_dat
+        
+    loss_track.append(loss(X_dat, Y_dat, theta))
+    accu_track.append(accuracy(X_dat, Y_dat, theta))
+    plt.plot(range(len(loss_track)), loss_track)
+    plt.xlabel('Iterations')
+    plt.ylabel('Cross Entropy Loss Function')
+    plt.show()
+    print(f'accuarcy so far is {accu_track}')
              
     grad_list = []
-    dtheta = np.pi/2* np.eye(3*n_qubits)
-    pred_list_theta = predictions(X_dat, theta)
+    dtheta = np.pi/2* np.eye(len(theta))
+    pred_list_theta = predictions(X_minibatch, theta)
     pred_list_theta_softmax = np.array(list(map(softmax, pred_list_theta)))
     for dt in dtheta:
-        pred_list_plus = predictions(X_dat, theta+dt)
-        pred_list_minus = predictions(X_dat, theta-dt)
+        pred_list_plus = predictions(X_minibatch, theta+dt)
+        pred_list_minus = predictions(X_minibatch, theta-dt)
         pred_list_dt = (pred_list_plus-pred_list_minus)*0.5
-        grad_list_theta = - Y_dat * (1-pred_list_theta_softmax[:,0])*\
-            pred_list_dt[:,0] -(1-Y_dat)*(1-pred_list_theta_softmax[:,1])\
-                *pred_list_dt[:,1]
-        grad_list.append(np.sum(grad_list_theta, axis = 0)/len(Y_dat))
-    return grad_list
+        grad_list_theta = -Y_minibatch * (1-pred_list_theta_softmax[:,1])*\
+            pred_list_dt[:,1] -(1-Y_minibatch)*(1-pred_list_theta_softmax[:,0])\
+                *pred_list_dt[:,0]
+        grad_list.append(np.sum(grad_list_theta, axis = 0)/minibatch_size)
+    return np.array(grad_list)
         
         
+def optimize(X_dat, Y_dat, minibatch_size = None, maxiter = 50):
+    #loss_track keeps record of the loss function during the training process
+    loss_track = []
+    accu_track = []
+    theta_init = np.random.uniform(size = 3*n_qubits*D)
+    objective_function = lambda params: loss(X_dat, Y_dat, params)
+    gradient_function = lambda params: gradient(X_dat, Y_dat, params, loss_track, \
+                                                accu_track, minibatch_size)
+    maxiter = 100  #TODO maxiter = 100
+    tol = 1e-3
+    lr = 2.5* 1e-2 
+    num_vars = int(3*n_qubits*D)
+    optimizer = ADAM(maxiter = maxiter, tol = tol, lr = lr)
+    point, value, _ = optimizer.optimize(num_vars = num_vars, objective_function \
+                                         = objective_function, gradient_function \
+                                             = gradient_function, initial_point = theta_init)
+    return point, value
     
+    
+def accuracy(X_dat, Y_dat, theta):
+    """
+
+    Parameters
+    ----------
+    X_dat : 2d ndarray, float, (rows, 2)
+    Y_dat : 1d ndarray, int, (rows,)
+    theta: 1d ndarray, float, (3*n_qubits*D, )
+
+    Returns
+    -------
+    accuracy: float, average accuracy
+
+    """
+    pred = predictions(X_dat, theta)
+    accu_count = 0
+    for (z1, z2), y in zip(pred, Y_dat):
+        if (z2-z1)*(y-0.5)> 0:
+            accu_count +=1
+    return accu_count/len(Y_dat)
     
 def get_data(n_samples = 200, plot = True):
     """
@@ -251,7 +318,8 @@ def get_data(n_samples = 200, plot = True):
     Y : 1d ndarray, int, (n_sample,)
 
     """
-    X, Y = datasets.make_circles(n_samples = n_samples, noise = 0.1, factor = 0.3)
+    X, Y = datasets.make_circles(n_samples = n_samples, noise = 0.1, \
+                                 factor = 0.3, random_state= 1)
     X_scale = np.max(np.abs(X), axis = 0)
     X = X/X_scale
     if plot:
@@ -266,6 +334,7 @@ def get_data(n_samples = 200, plot = True):
 # circuit parameters
 n_qubits = 4
 T = 10 
+D = 2
 
 # Unparametrized circuit part
 # Ising Hamiltonian times T,  a PauliSumOp
@@ -276,6 +345,40 @@ qc_ising = th.exp_i()
 qc = build_circ(n_qubits, 1)
 
 # Get training data
-X_dat, Y_dat = get_data(n_samples = 2, plot = False)
-theta = np.random.uniform(size = 3*n_qubits)
-g = gradient(X_dat, Y_dat, theta)
+n_samples = 20 
+X_dat, Y_dat = get_data(n_samples = n_samples, plot = True) 
+#theta = np.random.uniform(size = 3*n_qubits)
+#g = gradient(X_dat, Y_dat, theta)
+
+# Training
+
+t1 = time()
+minibatch_size = 20
+maxiter = 50
+qiskit.utils.algorithm_globals.random_seed = 10
+print(f'Training started for n_qubits = {n_qubits}, n_sample = {len(Y_dat)}, minibatch size = {minibatch_size}, maxiter = {maxiter}')
+theta, _ = optimize(X_dat, Y_dat, minibatch_size, maxiter)
+t2 = time()
+print(f'training takes {t2-t1} time')
+accu_train = accuracy(X_dat, Y_dat, theta)
+print(f'accuracy for training data is {accu_train}')
+
+
+#Testing  
+X_test, Y_test = get_data(n_samples = 20, plot = True) 
+accu_test = accuracy(X_test, Y_test, theta)
+print(f'accuracy on test data is {accu_test}')
+
+#Plot prediction
+X_test_plot = np.array([[(i,j) for i in np.arange(-1, 1, 0.2)] for j in np.arange(-1,1,0.2)])
+Y_test_plot = np.zeros(X_test_plot.shape[:2])
+for j in range(10):
+    pred = predictions(X_test_plot[:,j].reshape(-1,2), theta)
+    Y_test_plot[:,j] = np.array(list(map(softmax, pred)))[:,0]
+fig, (ax1, ax2) = plt.subplots(1,2)
+img1 = ax1.imshow(Y_test_plot, vmin = 0, vmax = 1)
+plt.colorbar(img1, ax = ax1)
+img2 = ax2.contourf(Y_test_plot, levels = [0,0.5,1], colors = ['red', 'purple'], alpha = 0.8)
+plt.colorbar(img2, ax = ax2)
+plt.axis('square')
+plt.show()
